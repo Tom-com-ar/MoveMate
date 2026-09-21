@@ -1,11 +1,13 @@
 import { useState } from 'react';
 import { StatusBar } from 'expo-status-bar';
-import { ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import Animated, { Easing, FadeIn } from 'react-native-reanimated';
 import { SafeAreaProvider, SafeAreaView } from 'react-native-safe-area-context';
 
 import { BotonIniciarActividad } from './src/components/BotonIniciarActividad';
 import { EntradaAnimada } from './src/components/EntradaAnimada';
+import { PantallaHistorial } from './src/components/PantallaHistorial';
 import { PantallaSeguimientoGPS } from './src/components/PantallaSeguimientoGPS';
 import {
   SelectorTipoActividad,
@@ -18,6 +20,7 @@ import { dashboardSummary } from './src/data/dashboard';
 export default function App() {
   const [selectorVisible, setSelectorVisible] = useState(false);
   const [actividadActual, setActividadActual] = useState<TipoActividad | null>(null);
+  const [historialVisible, setHistorialVisible] = useState(false);
   const [seguimientoActivo, setSeguimientoActivo] = useState(false);
 
   const iniciarActividad = (tipo: TipoActividad) => {
@@ -32,7 +35,8 @@ export default function App() {
   };
 
   return (
-    <SafeAreaProvider>
+    <GestureHandlerRootView style={styles.raiz}>
+      <SafeAreaProvider>
       {seguimientoActivo && actividadActual ? (
         <Animated.View
           entering={FadeIn.duration(260).easing(Easing.out(Easing.cubic))}
@@ -42,6 +46,13 @@ export default function App() {
             alFinalizar={finalizarActividad}
             tipoActividad={actividadActual}
           />
+        </Animated.View>
+      ) : historialVisible ? (
+        <Animated.View
+          entering={FadeIn.duration(260).easing(Easing.out(Easing.cubic))}
+          style={styles.pantallaAnimada}
+        >
+          <PantallaHistorial alVolver={() => setHistorialVisible(false)} />
         </Animated.View>
       ) : (
       <Animated.View
@@ -63,8 +74,21 @@ export default function App() {
                 <Text style={styles.brandName}>MoveMate</Text>
               </View>
 
-              <View style={styles.datePill}>
-                <Text style={styles.dateText}>{dashboardSummary.dateLabel}</Text>
+              <View style={styles.accionesEncabezado}>
+                <View style={styles.datePill}>
+                  <Text style={styles.dateText}>{dashboardSummary.dateLabel}</Text>
+                </View>
+                <Pressable
+                  accessibilityLabel="Abrir historial"
+                  accessibilityRole="button"
+                  onPress={() => setHistorialVisible(true)}
+                  style={({ pressed }) => [
+                    styles.botonHistorial,
+                    pressed && styles.botonHistorialPresionado,
+                  ]}
+                >
+                  <Text style={styles.textoHistorial}>Historial</Text>
+                </Pressable>
               </View>
             </View>
           </EntradaAnimada>
@@ -141,11 +165,15 @@ export default function App() {
       </SafeAreaView>
       </Animated.View>
       )}
-    </SafeAreaProvider>
+      </SafeAreaProvider>
+    </GestureHandlerRootView>
   );
 }
 
 const styles = StyleSheet.create({
+  raiz: {
+    flex: 1,
+  },
   pantallaAnimada: {
     flex: 1,
   },
@@ -188,6 +216,11 @@ const styles = StyleSheet.create({
     fontWeight: '800',
     letterSpacing: -0.4,
   },
+  accionesEncabezado: {
+    alignItems: 'center',
+    flexDirection: 'row',
+    gap: 7,
+  },
   datePill: {
     backgroundColor: '#E7EBDD',
     borderRadius: 20,
@@ -198,6 +231,22 @@ const styles = StyleSheet.create({
     color: '#52645E',
     fontSize: 12,
     fontWeight: '700',
+  },
+  botonHistorial: {
+    alignItems: 'center',
+    backgroundColor: '#173F3B',
+    borderRadius: 17,
+    height: 34,
+    justifyContent: 'center',
+    paddingHorizontal: 12,
+  },
+  botonHistorialPresionado: {
+    backgroundColor: '#2F5751',
+  },
+  textoHistorial: {
+    color: '#E9F478',
+    fontSize: 10,
+    fontWeight: '900',
   },
   intro: {
     marginBottom: 22,
