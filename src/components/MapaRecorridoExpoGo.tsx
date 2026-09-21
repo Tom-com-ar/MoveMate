@@ -1,10 +1,23 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import {
+  forwardRef,
+  useCallback,
+  useEffect,
+  useImperativeHandle,
+  useRef,
+  useState,
+} from 'react';
 import type { LatLng } from 'react-native-maps';
 import { WebView } from 'react-native-webview';
 
 type PropiedadesMapaRecorridoExpoGo = {
   posicionActual: LatLng;
   ruta: LatLng[];
+};
+
+export type ReferenciaMapaRecorridoExpoGo = {
+  acercar: () => void;
+  alejar: () => void;
+  centrar: () => void;
 };
 
 function convertirRutaParaMapa(ruta: LatLng[]) {
@@ -32,7 +45,7 @@ function crearContenidoMapa(posicionInicial: LatLng, rutaInicial: LatLng[]) {
         <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
         <script>
           const posicionInicial = [${posicionInicial.latitude}, ${posicionInicial.longitude}];
-          const mapa = L.map('mapa', { zoomControl: true }).setView(posicionInicial, 16);
+          const mapa = L.map('mapa', { zoomControl: false }).setView(posicionInicial, 16);
 
           L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
             attribution: '&copy; OpenStreetMap contributors',
@@ -69,16 +82,31 @@ function crearContenidoMapa(posicionInicial: LatLng, rutaInicial: LatLng[]) {
             marcadorActual.setLatLng(ultimoPunto);
             mapa.panTo(ultimoPunto, { animate: true, duration: 0.5 });
           };
+
+          window.controlarMapa = function(accion, posicion) {
+            if (accion === 'acercar') {
+              mapa.setZoom(Math.min(mapa.getZoom() + 1, 19));
+            }
+            if (accion === 'alejar') {
+              mapa.setZoom(Math.max(mapa.getZoom() - 1, 3));
+            }
+            if (accion === 'centrar') {
+              mapa.setView(posicion, Math.max(mapa.getZoom(), 16), {
+                animate: true,
+                duration: 0.35,
+              });
+            }
+          };
         </script>
       </body>
     </html>
   `;
 }
 
-export function MapaRecorridoExpoGo({
-  posicionActual,
-  ruta,
-}: PropiedadesMapaRecorridoExpoGo) {
+export const MapaRecorridoExpoGo = forwardRef<
+  ReferenciaMapaRecorridoExpoGo,
+  PropiedadesMapaRecorridoExpoGo
+>(function MapaRecorridoExpoGo({ posicionActual, ruta }, referenciaExterna) {
   const referenciaMapa = useRef<WebView>(null);
   const [contenidoMapa] = useState(() =>
     crearContenidoMapa(posicionActual, ruta),
@@ -94,6 +122,32 @@ export function MapaRecorridoExpoGo({
     `);
   }, [ruta]);
 
+  const controlarMapa = useCallback(
+    (accion: 'acercar' | 'alejar' | 'centrar') => {
+      const posicion = JSON.stringify([
+        posicionActual.latitude,
+        posicionActual.longitude,
+      ]);
+      referenciaMapa.current?.injectJavaScript(`
+        if (window.controlarMapa) {
+          window.controlarMapa('${accion}', ${posicion});
+        }
+        true;
+      `);
+    },
+    [posicionActual],
+  );
+
+  useImperativeHandle(
+    referenciaExterna,
+    () => ({
+      acercar: () => controlarMapa('acercar'),
+      alejar: () => controlarMapa('alejar'),
+      centrar: () => controlarMapa('centrar'),
+    }),
+    [controlarMapa],
+  );
+
   useEffect(() => {
     actualizarMapa();
   }, [actualizarMapa]);
@@ -106,4 +160,4 @@ export function MapaRecorridoExpoGo({
       source={{ html: contenidoMapa, baseUrl: 'https://movemate.local' }}
     />
   );
-}
+});

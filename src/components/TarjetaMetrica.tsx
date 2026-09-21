@@ -1,17 +1,23 @@
 import { StyleSheet, Text, View } from 'react-native';
 
+import { NumeroAnimado } from './NumeroAnimado';
+
 type PropiedadesTarjetaMetrica = {
   colorAcento: string;
+  decimales?: number;
   icono: string;
   etiqueta: string;
+  retrasoAnimacion?: number;
   unidad: string;
-  valor: string;
+  valor: number;
 };
 
 export function TarjetaMetrica({
   colorAcento,
+  decimales = 0,
   icono,
   etiqueta,
+  retrasoAnimacion = 0,
   unidad,
   valor,
 }: PropiedadesTarjetaMetrica) {
@@ -22,7 +28,12 @@ export function TarjetaMetrica({
       </View>
       <Text style={estilos.etiqueta}>{etiqueta}</Text>
       <View style={estilos.filaValor}>
-        <Text style={estilos.valor}>{valor}</Text>
+        <NumeroAnimado
+          decimales={decimales}
+          estilo={estilos.valor}
+          retraso={retrasoAnimacion}
+          valor={valor}
+        />
         <Text style={estilos.unidad}>{unidad}</Text>
       </View>
     </View>

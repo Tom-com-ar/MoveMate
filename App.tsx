@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { StatusBar } from 'expo-status-bar';
 import { ScrollView, StyleSheet, Text, View } from 'react-native';
+import Animated, { Easing, FadeIn } from 'react-native-reanimated';
 import { SafeAreaProvider, SafeAreaView } from 'react-native-safe-area-context';
 
 import { BotonIniciarActividad } from './src/components/BotonIniciarActividad';
@@ -33,11 +34,20 @@ export default function App() {
   return (
     <SafeAreaProvider>
       {seguimientoActivo && actividadActual ? (
-        <PantallaSeguimientoGPS
-          alFinalizar={finalizarActividad}
-          tipoActividad={actividadActual}
-        />
+        <Animated.View
+          entering={FadeIn.duration(260).easing(Easing.out(Easing.cubic))}
+          style={styles.pantallaAnimada}
+        >
+          <PantallaSeguimientoGPS
+            alFinalizar={finalizarActividad}
+            tipoActividad={actividadActual}
+          />
+        </Animated.View>
       ) : (
+      <Animated.View
+        entering={FadeIn.duration(260).easing(Easing.out(Easing.cubic))}
+        style={styles.pantallaAnimada}
+      >
       <SafeAreaView style={styles.safeArea} edges={['top']}>
         <StatusBar style="dark" />
         <ScrollView
@@ -80,10 +90,12 @@ export default function App() {
             <EntradaAnimada retraso={390} estilo={styles.metricItem}>
               <TarjetaMetrica
                 colorAcento="#69C9B0"
+                decimales={1}
                 icono="KM"
                 etiqueta="Distancia"
+                retrasoAnimacion={520}
                 unidad="km"
-                valor={dashboardSummary.distanceKm.toFixed(1)}
+                valor={dashboardSummary.distanceKm}
               />
             </EntradaAnimada>
 
@@ -92,8 +104,9 @@ export default function App() {
                 colorAcento="#FFAA75"
                 icono="KCAL"
                 etiqueta="Calorías"
+                retrasoAnimacion={630}
                 unidad="kcal"
-                valor={dashboardSummary.calories.toLocaleString('es-AR')}
+                valor={dashboardSummary.calories}
               />
             </EntradaAnimada>
           </View>
@@ -126,12 +139,16 @@ export default function App() {
           visible={selectorVisible}
         />
       </SafeAreaView>
+      </Animated.View>
       )}
     </SafeAreaProvider>
   );
 }
 
 const styles = StyleSheet.create({
+  pantallaAnimada: {
+    flex: 1,
+  },
   safeArea: {
     flex: 1,
     backgroundColor: '#F4F6EF',

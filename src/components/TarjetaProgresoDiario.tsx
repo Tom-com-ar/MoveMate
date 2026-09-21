@@ -8,6 +8,8 @@ import Animated, {
   withTiming,
 } from 'react-native-reanimated';
 
+import { NumeroAnimado } from './NumeroAnimado';
+
 type PropiedadesTarjetaProgresoDiario = {
   pasosActuales: number;
   metaPasos: number;
@@ -40,13 +42,22 @@ export function TarjetaProgresoDiario({
         <View>
           <Text style={estilos.etiqueta}>PASOS DE HOY</Text>
           <View style={estilos.filaValor}>
-            <Text style={estilos.valor}>{pasosActuales.toLocaleString('es-AR')}</Text>
+            <NumeroAnimado
+              estilo={estilos.valor}
+              retraso={430}
+              valor={pasosActuales}
+            />
             <Text style={estilos.meta}> / {metaPasos.toLocaleString('es-AR')}</Text>
           </View>
         </View>
 
         <View style={estilos.insigniaPorcentaje}>
-          <Text style={estilos.porcentaje}>{Math.round(progreso * 100)}%</Text>
+          <NumeroAnimado
+            estilo={estilos.porcentaje}
+            retraso={430}
+            sufijo="%"
+            valor={Math.round(progreso * 100)}
+          />
         </View>
       </View>
 

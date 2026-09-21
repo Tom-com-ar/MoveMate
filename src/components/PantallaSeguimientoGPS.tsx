@@ -13,7 +13,11 @@ import { StatusBar } from 'expo-status-bar';
 import MapView, { LatLng, Marker, Polyline } from 'react-native-maps';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
-import { MapaRecorridoExpoGo } from './MapaRecorridoExpoGo';
+import { ControlesMapa } from './ControlesMapa';
+import {
+  MapaRecorridoExpoGo,
+  ReferenciaMapaRecorridoExpoGo,
+} from './MapaRecorridoExpoGo';
 import { nombresActividad, TipoActividad } from './SelectorTipoActividad';
 
 type EstadoSeguimiento =
@@ -43,6 +47,7 @@ export function PantallaSeguimientoGPS({
 }: PropiedadesPantallaSeguimientoGPS) {
   const bordesSeguros = useSafeAreaInsets();
   const referenciaMapa = useRef<MapView>(null);
+  const referenciaMapaExpoGo = useRef<ReferenciaMapaRecorridoExpoGo>(null);
   const [estado, setEstado] = useState<EstadoSeguimiento>('solicitando');
   const [intento, setIntento] = useState(0);
   const [mensajeError, setMensajeError] = useState('');
@@ -52,6 +57,43 @@ export function PantallaSeguimientoGPS({
   const usarMapaAlternativo =
     Platform.OS === 'android' &&
     Constants.executionEnvironment === ExecutionEnvironment.StoreClient;
+
+  const cambiarZoom = async (incremento: number) => {
+    if (usarMapaAlternativo) {
+      if (incremento > 0) {
+        referenciaMapaExpoGo.current?.acercar();
+      } else {
+        referenciaMapaExpoGo.current?.alejar();
+      }
+      return;
+    }
+
+    const camara = await referenciaMapa.current?.getCamera();
+    if (!camara) {
+      return;
+    }
+
+    referenciaMapa.current?.animateCamera(
+      { zoom: Math.max(3, Math.min((camara.zoom ?? 16) + incremento, 20)) },
+      { duration: 220 },
+    );
+  };
+
+  const centrarMapa = () => {
+    if (!posicionActual) {
+      return;
+    }
+
+    if (usarMapaAlternativo) {
+      referenciaMapaExpoGo.current?.centrar();
+      return;
+    }
+
+    referenciaMapa.current?.animateCamera(
+      { center: posicionActual, zoom: 16 },
+      { duration: 300 },
+    );
+  };
 
   useEffect(() => {
     let pantallaActiva = true;
@@ -209,7 +251,11 @@ export function PantallaSeguimientoGPS({
     <View style={estilos.pantalla}>
       <StatusBar style="dark" />
       {usarMapaAlternativo ? (
-        <MapaRecorridoExpoGo posicionActual={posicionActual} ruta={ruta} />
+        <MapaRecorridoExpoGo
+          posicionActual={posicionActual}
+          ref={referenciaMapaExpoGo}
+          ruta={ruta}
+        />
       ) : (
         <MapView
           initialRegion={{
@@ -239,6 +285,13 @@ export function PantallaSeguimientoGPS({
           <Marker coordinate={ruta[0]} title="Inicio" />
         </MapView>
       )}
+
+      <ControlesMapa
+        alAcercar={() => void cambiarZoom(1)}
+        alAlejar={() => void cambiarZoom(-1)}
+        alCentrar={centrarMapa}
+        desplazamientoInferior={bordesSeguros.bottom + 106}
+      />
 
       <View style={[estilos.encabezadoMapa, { top: bordesSeguros.top + 12 }]}>
         <View style={estilos.tipoActividad}>
