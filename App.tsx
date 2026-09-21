@@ -5,6 +5,7 @@ import { SafeAreaProvider, SafeAreaView } from 'react-native-safe-area-context';
 
 import { BotonIniciarActividad } from './src/components/BotonIniciarActividad';
 import { EntradaAnimada } from './src/components/EntradaAnimada';
+import { PantallaSeguimientoGPS } from './src/components/PantallaSeguimientoGPS';
 import {
   SelectorTipoActividad,
   TipoActividad,
@@ -16,14 +17,27 @@ import { dashboardSummary } from './src/data/dashboard';
 export default function App() {
   const [selectorVisible, setSelectorVisible] = useState(false);
   const [actividadActual, setActividadActual] = useState<TipoActividad | null>(null);
+  const [seguimientoActivo, setSeguimientoActivo] = useState(false);
 
   const iniciarActividad = (tipo: TipoActividad) => {
     setActividadActual(tipo);
     setSelectorVisible(false);
+    setSeguimientoActivo(true);
+  };
+
+  const finalizarActividad = () => {
+    setSeguimientoActivo(false);
+    setActividadActual(null);
   };
 
   return (
     <SafeAreaProvider>
+      {seguimientoActivo && actividadActual ? (
+        <PantallaSeguimientoGPS
+          alFinalizar={finalizarActividad}
+          tipoActividad={actividadActual}
+        />
+      ) : (
       <SafeAreaView style={styles.safeArea} edges={['top']}>
         <StatusBar style="dark" />
         <ScrollView
@@ -112,6 +126,7 @@ export default function App() {
           visible={selectorVisible}
         />
       </SafeAreaView>
+      )}
     </SafeAreaProvider>
   );
 }

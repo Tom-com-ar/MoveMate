@@ -7,6 +7,14 @@
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "light",
     "backgroundColor": "#F4F6EF",
+    "plugins": [
+      [
+        "expo-location",
+        {
+          "locationWhenInUsePermission": "MoveMate usa tu ubicación para registrar el recorrido de tu actividad."
+        }
+      ]
+    ],
     "ios": {
       "supportsTablet": true
     },
