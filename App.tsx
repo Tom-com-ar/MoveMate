@@ -1,13 +1,27 @@
+import { useState } from 'react';
 import { StatusBar } from 'expo-status-bar';
 import { ScrollView, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaProvider, SafeAreaView } from 'react-native-safe-area-context';
 
+import { BotonIniciarActividad } from './src/components/BotonIniciarActividad';
 import { EntradaAnimada } from './src/components/EntradaAnimada';
+import {
+  SelectorTipoActividad,
+  TipoActividad,
+} from './src/components/SelectorTipoActividad';
 import { TarjetaMetrica } from './src/components/TarjetaMetrica';
 import { TarjetaProgresoDiario } from './src/components/TarjetaProgresoDiario';
 import { dashboardSummary } from './src/data/dashboard';
 
 export default function App() {
+  const [selectorVisible, setSelectorVisible] = useState(false);
+  const [actividadActual, setActividadActual] = useState<TipoActividad | null>(null);
+
+  const iniciarActividad = (tipo: TipoActividad) => {
+    setActividadActual(tipo);
+    setSelectorVisible(false);
+  };
+
   return (
     <SafeAreaProvider>
       <SafeAreaView style={styles.safeArea} edges={['top']}>
@@ -85,6 +99,18 @@ export default function App() {
             </View>
           </EntradaAnimada>
         </ScrollView>
+
+        <BotonIniciarActividad
+          actividadActual={actividadActual}
+          alPresionar={() => setSelectorVisible(true)}
+        />
+
+        <SelectorTipoActividad
+          actividadActual={actividadActual}
+          alCerrar={() => setSelectorVisible(false)}
+          alIniciar={iniciarActividad}
+          visible={selectorVisible}
+        />
       </SafeAreaView>
     </SafeAreaProvider>
   );
@@ -98,7 +124,7 @@ const styles = StyleSheet.create({
   content: {
     paddingHorizontal: 20,
     paddingTop: 12,
-    paddingBottom: 36,
+    paddingBottom: 116,
   },
   header: {
     alignItems: 'center',
