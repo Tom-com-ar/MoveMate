@@ -7,7 +7,6 @@ import {
   Text,
   View,
 } from 'react-native';
-import Constants, { ExecutionEnvironment } from 'expo-constants';
 import * as Location from 'expo-location';
 import { StatusBar } from 'expo-status-bar';
 import MapView, { LatLng, Marker, Polyline } from 'react-native-maps';
@@ -94,9 +93,7 @@ export function PantallaSeguimientoGPS({
   const [simulacionActiva, setSimulacionActiva] = useState(false);
   const [ventanaSimulacionVisible, setVentanaSimulacionVisible] = useState(false);
   const [inicioActividad] = useState(() => new Date());
-  const usarMapaAlternativo =
-    Platform.OS === 'android' &&
-    Constants.executionEnvironment === ExecutionEnvironment.StoreClient;
+  const usarMapaAlternativo = Platform.OS === 'android';
 
   const cambiarZoom = async (incremento: number) => {
     if (usarMapaAlternativo) {
