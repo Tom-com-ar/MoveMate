@@ -11,15 +11,15 @@ import Animated, {
 import { NumeroAnimado } from './NumeroAnimado';
 
 type PropiedadesTarjetaProgresoDiario = {
-  pasosActuales: number;
-  metaPasos: number;
+  metaMinutos: number;
+  minutosActuales: number;
 };
 
 export function TarjetaProgresoDiario({
-  pasosActuales,
-  metaPasos,
+  metaMinutos,
+  minutosActuales,
 }: PropiedadesTarjetaProgresoDiario) {
-  const progreso = Math.min(pasosActuales / metaPasos, 1);
+  const progreso = Math.min(minutosActuales / metaMinutos, 1);
   const progresoAnimado = useSharedValue(0);
 
   useEffect(() => {
@@ -40,14 +40,14 @@ export function TarjetaProgresoDiario({
     <View style={estilos.tarjeta}>
       <View style={estilos.filaSuperior}>
         <View>
-          <Text style={estilos.etiqueta}>PASOS DE HOY</Text>
+          <Text style={estilos.etiqueta}>MINUTOS ACTIVOS</Text>
           <View style={estilos.filaValor}>
             <NumeroAnimado
               estilo={estilos.valor}
               retraso={430}
-              valor={pasosActuales}
+              valor={minutosActuales}
             />
-            <Text style={estilos.meta}> / {metaPasos.toLocaleString('es-AR')}</Text>
+            <Text style={estilos.meta}> / {metaMinutos} min</Text>
           </View>
         </View>
 
@@ -68,7 +68,7 @@ export function TarjetaProgresoDiario({
       <View style={estilos.filaInferior}>
         <Text style={estilos.textoInferior}>Te faltan</Text>
         <Text style={estilos.restante}>
-          {(metaPasos - pasosActuales).toLocaleString('es-AR')} pasos
+          {Math.max(0, metaMinutos - minutosActuales)} min
         </Text>
       </View>
     </View>

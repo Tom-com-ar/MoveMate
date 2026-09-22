@@ -18,6 +18,7 @@ export type ReferenciaMapaRecorridoExpoGo = {
   acercar: () => void;
   alejar: () => void;
   centrar: () => void;
+  encuadrar: () => void;
 };
 
 function convertirRutaParaMapa(ruta: LatLng[]) {
@@ -96,6 +97,13 @@ function crearContenidoMapa(posicionInicial: LatLng, rutaInicial: LatLng[]) {
                 duration: 0.35,
               });
             }
+            if (accion === 'encuadrar' && recorrido.getLatLngs().length > 1) {
+              mapa.fitBounds(recorrido.getBounds(), {
+                animate: true,
+                paddingBottomRight: [45, 170],
+                paddingTopLeft: [45, 150],
+              });
+            }
           };
         </script>
       </body>
@@ -123,7 +131,7 @@ export const MapaRecorridoExpoGo = forwardRef<
   }, [ruta]);
 
   const controlarMapa = useCallback(
-    (accion: 'acercar' | 'alejar' | 'centrar') => {
+    (accion: 'acercar' | 'alejar' | 'centrar' | 'encuadrar') => {
       const posicion = JSON.stringify([
         posicionActual.latitude,
         posicionActual.longitude,
@@ -144,6 +152,7 @@ export const MapaRecorridoExpoGo = forwardRef<
       acercar: () => controlarMapa('acercar'),
       alejar: () => controlarMapa('alejar'),
       centrar: () => controlarMapa('centrar'),
+      encuadrar: () => controlarMapa('encuadrar'),
     }),
     [controlarMapa],
   );

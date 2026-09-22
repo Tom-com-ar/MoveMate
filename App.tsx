@@ -1,12 +1,21 @@
-import { useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { StatusBar } from 'expo-status-bar';
-import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import {
+  ActivityIndicator,
+  Alert,
+  Pressable,
+  ScrollView,
+  StyleSheet,
+  Text,
+  View,
+} from 'react-native';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import Animated, { Easing, FadeIn } from 'react-native-reanimated';
 import { SafeAreaProvider, SafeAreaView } from 'react-native-safe-area-context';
 
 import { BotonIniciarActividad } from './src/components/BotonIniciarActividad';
 import { EntradaAnimada } from './src/components/EntradaAnimada';
+import { PantallaAcceso } from './src/components/PantallaAcceso';
 import { PantallaHistorial } from './src/components/PantallaHistorial';
 import { PantallaSeguimientoGPS } from './src/components/PantallaSeguimientoGPS';
 import {
@@ -15,13 +24,42 @@ import {
 } from './src/components/SelectorTipoActividad';
 import { TarjetaMetrica } from './src/components/TarjetaMetrica';
 import { TarjetaProgresoDiario } from './src/components/TarjetaProgresoDiario';
-import { dashboardSummary } from './src/data/dashboard';
+import { useSesionSupabase } from './src/hooks/useSesionSupabase';
+import {
+  guardarActividadEnNube,
+  obtenerResumenDeInicio,
+} from './src/servicios/actividadesNube';
+import { supabase, supabaseConfigurado } from './src/servicios/supabase';
+import type { ActividadCompletada } from './src/types/actividad';
+import { crearResumenInicioVacio } from './src/types/resumenInicio';
 
 export default function App() {
+  const { cargandoSesion, sesion } = useSesionSupabase();
   const [selectorVisible, setSelectorVisible] = useState(false);
   const [actividadActual, setActividadActual] = useState<TipoActividad | null>(null);
   const [historialVisible, setHistorialVisible] = useState(false);
+  const [mensajeResumen, setMensajeResumen] = useState('');
+  const [resumenInicio, setResumenInicio] = useState(crearResumenInicioVacio);
   const [seguimientoActivo, setSeguimientoActivo] = useState(false);
+
+  const cargarResumen = useCallback(async () => {
+    if (!sesion?.user.id) {
+      setResumenInicio(crearResumenInicioVacio());
+      return;
+    }
+
+    try {
+      setMensajeResumen('');
+      const resumen = await obtenerResumenDeInicio(sesion.user.id);
+      setResumenInicio(resumen);
+    } catch {
+      setMensajeResumen('No pudimos actualizar el resumen de hoy.');
+    }
+  }, [sesion?.user.id]);
+
+  useEffect(() => {
+    void cargarResumen();
+  }, [cargarResumen]);
 
   const iniciarActividad = (tipo: TipoActividad) => {
     setActividadActual(tipo);
@@ -29,20 +67,58 @@ export default function App() {
     setSeguimientoActivo(true);
   };
 
-  const finalizarActividad = () => {
+  const cancelarActividad = () => {
     setSeguimientoActivo(false);
     setActividadActual(null);
+  };
+
+  const finalizarActividad = (actividad: ActividadCompletada) => {
+    cancelarActividad();
+
+    if (sesion?.user.id) {
+      void guardarActividadEnNube(actividad, sesion.user.id)
+        .then(async () => {
+          await cargarResumen();
+          Alert.alert(
+            'Actividad sincronizada',
+            'Tu recorrido ya está guardado en Supabase.',
+          );
+        })
+        .catch(() => {
+          Alert.alert(
+            'No se pudo sincronizar',
+            'Revisá tu conexión. La actividad no se guardó en la nube.',
+          );
+        });
+    }
+  };
+
+  const cerrarSesion = () => {
+    setHistorialVisible(false);
+    setResumenInicio(crearResumenInicioVacio());
+    if (supabase) {
+      void supabase.auth.signOut({ scope: 'local' });
+    }
   };
 
   return (
     <GestureHandlerRootView style={styles.raiz}>
       <SafeAreaProvider>
-      {seguimientoActivo && actividadActual ? (
+      {supabaseConfigurado && cargandoSesion ? (
+        <View style={styles.cargandoSesion}>
+          <StatusBar style="light" />
+          <ActivityIndicator color="#E9F478" size="large" />
+          <Text style={styles.textoCargandoSesion}>Recuperando tu sesión...</Text>
+        </View>
+      ) : supabaseConfigurado && !sesion ? (
+        <PantallaAcceso />
+      ) : seguimientoActivo && actividadActual ? (
         <Animated.View
           entering={FadeIn.duration(260).easing(Easing.out(Easing.cubic))}
           style={styles.pantallaAnimada}
         >
           <PantallaSeguimientoGPS
+            alCancelar={cancelarActividad}
             alFinalizar={finalizarActividad}
             tipoActividad={actividadActual}
           />
@@ -52,7 +128,13 @@ export default function App() {
           entering={FadeIn.duration(260).easing(Easing.out(Easing.cubic))}
           style={styles.pantallaAnimada}
         >
-          <PantallaHistorial alVolver={() => setHistorialVisible(false)} />
+          <PantallaHistorial
+            alVolver={() => {
+              setHistorialVisible(false);
+              void cargarResumen();
+            }}
+            usuarioId={sesion?.user.id}
+          />
         </Animated.View>
       ) : (
       <Animated.View
@@ -75,9 +157,6 @@ export default function App() {
               </View>
 
               <View style={styles.accionesEncabezado}>
-                <View style={styles.datePill}>
-                  <Text style={styles.dateText}>{dashboardSummary.dateLabel}</Text>
-                </View>
                 <Pressable
                   accessibilityLabel="Abrir historial"
                   accessibilityRole="button"
@@ -89,24 +168,42 @@ export default function App() {
                 >
                   <Text style={styles.textoHistorial}>Historial</Text>
                 </Pressable>
+                {sesion && (
+                  <Pressable
+                    accessibilityLabel="Cerrar sesión"
+                    accessibilityRole="button"
+                    onPress={cerrarSesion}
+                    style={({ pressed }) => [
+                      styles.botonCerrarSesion,
+                      pressed && styles.botonCerrarSesionPresionado,
+                    ]}
+                  >
+                    <Text style={styles.textoCerrarSesion}>Cerrar sesión</Text>
+                  </Pressable>
+                )}
               </View>
             </View>
           </EntradaAnimada>
 
           <EntradaAnimada retraso={170}>
             <View style={styles.intro}>
-              <Text style={styles.eyebrow}>TU RESUMEN DE HOY</Text>
+              <Text style={styles.eyebrow}>
+                {resumenInicio.fechaEtiqueta} · TU RESUMEN
+              </Text>
               <Text style={styles.title}>Moverte un poco{`\n`}también cuenta.</Text>
               <Text style={styles.subtitle}>
                 Cada paso suma. Mirá cómo viene tu día.
               </Text>
+              {!!mensajeResumen && (
+                <Text style={styles.mensajeResumen}>{mensajeResumen}</Text>
+              )}
             </View>
           </EntradaAnimada>
 
           <EntradaAnimada retraso={280}>
             <TarjetaProgresoDiario
-              pasosActuales={dashboardSummary.steps}
-              metaPasos={dashboardSummary.stepGoal}
+              metaMinutos={resumenInicio.metaMinutos}
+              minutosActuales={resumenInicio.minutosActivos}
             />
           </EntradaAnimada>
 
@@ -119,7 +216,7 @@ export default function App() {
                 etiqueta="Distancia"
                 retrasoAnimacion={520}
                 unidad="km"
-                valor={dashboardSummary.distanceKm}
+                valor={resumenInicio.distanciaKm}
               />
             </EntradaAnimada>
 
@@ -130,7 +227,7 @@ export default function App() {
                 etiqueta="Calorías"
                 retrasoAnimacion={630}
                 unidad="kcal"
-                valor={dashboardSummary.calories}
+                valor={resumenInicio.calorias}
               />
             </EntradaAnimada>
           </View>
@@ -138,12 +235,18 @@ export default function App() {
           <EntradaAnimada retraso={610}>
             <View style={styles.motivationCard}>
               <View style={styles.motivationIcon}>
-                <Text style={styles.motivationIconText}>3</Text>
+                <Text style={styles.motivationIconText}>
+                  {resumenInicio.rachaDias}
+                </Text>
               </View>
               <View style={styles.motivationCopy}>
                 <Text style={styles.motivationTitle}>Racha en movimiento</Text>
                 <Text style={styles.motivationText}>
-                  Llevás 3 días cumpliendo tu objetivo. ¡Seguí así!
+                  {resumenInicio.rachaDias > 0
+                    ? `Llevás ${resumenInicio.rachaDias} ${
+                        resumenInicio.rachaDias === 1 ? 'día' : 'días'
+                      } registrando actividad. ¡Seguí así!`
+                    : 'Completá una actividad para comenzar tu racha.'}
                 </Text>
               </View>
               <Text style={styles.arrow}>↗</Text>
@@ -176,6 +279,18 @@ const styles = StyleSheet.create({
   },
   pantallaAnimada: {
     flex: 1,
+  },
+  cargandoSesion: {
+    alignItems: 'center',
+    backgroundColor: '#173F3B',
+    flex: 1,
+    justifyContent: 'center',
+  },
+  textoCargandoSesion: {
+    color: '#FFFFFF',
+    fontSize: 13,
+    fontWeight: '700',
+    marginTop: 14,
   },
   safeArea: {
     flex: 1,
@@ -221,17 +336,6 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     gap: 7,
   },
-  datePill: {
-    backgroundColor: '#E7EBDD',
-    borderRadius: 20,
-    paddingHorizontal: 13,
-    paddingVertical: 8,
-  },
-  dateText: {
-    color: '#52645E',
-    fontSize: 12,
-    fontWeight: '700',
-  },
   botonHistorial: {
     alignItems: 'center',
     backgroundColor: '#173F3B',
@@ -246,6 +350,23 @@ const styles = StyleSheet.create({
   textoHistorial: {
     color: '#E9F478',
     fontSize: 10,
+    fontWeight: '900',
+  },
+  botonCerrarSesion: {
+    alignItems: 'center',
+    borderColor: '#C9D2C8',
+    borderRadius: 17,
+    borderWidth: 1,
+    height: 34,
+    justifyContent: 'center',
+    paddingHorizontal: 10,
+  },
+  botonCerrarSesionPresionado: {
+    backgroundColor: '#E5EADD',
+  },
+  textoCerrarSesion: {
+    color: '#536760',
+    fontSize: 9,
     fontWeight: '900',
   },
   intro: {
@@ -271,6 +392,12 @@ const styles = StyleSheet.create({
     fontSize: 15,
     lineHeight: 22,
     marginTop: 12,
+  },
+  mensajeResumen: {
+    color: '#A04E43',
+    fontSize: 11,
+    fontWeight: '700',
+    marginTop: 8,
   },
   metricsRow: {
     flexDirection: 'row',

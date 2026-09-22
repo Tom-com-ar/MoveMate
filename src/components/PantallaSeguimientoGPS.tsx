@@ -19,6 +19,8 @@ import {
   ReferenciaMapaRecorridoExpoGo,
 } from './MapaRecorridoExpoGo';
 import { nombresActividad, TipoActividad } from './SelectorTipoActividad';
+import { VentanaSimulacion } from './VentanaSimulacion';
+import type { ActividadCompletada } from '../types/actividad';
 
 type EstadoSeguimiento =
   | 'activo'
@@ -28,7 +30,8 @@ type EstadoSeguimiento =
   | 'solicitando';
 
 type PropiedadesPantallaSeguimientoGPS = {
-  alFinalizar: () => void;
+  alCancelar: () => void;
+  alFinalizar: (actividad: ActividadCompletada) => void;
   tipoActividad: TipoActividad;
 };
 
@@ -41,19 +44,56 @@ function convertirCoordenadas(
   };
 }
 
+function calcularDistanciaEntrePuntos(inicio: LatLng, fin: LatLng) {
+  const radioTierra = 6_371_000;
+  const convertirARadianes = (grados: number) => (grados * Math.PI) / 180;
+  const diferenciaLatitud = convertirARadianes(fin.latitude - inicio.latitude);
+  const diferenciaLongitud = convertirARadianes(fin.longitude - inicio.longitude);
+  const latitudInicio = convertirARadianes(inicio.latitude);
+  const latitudFin = convertirARadianes(fin.latitude);
+  const calculo =
+    Math.sin(diferenciaLatitud / 2) ** 2 +
+    Math.cos(latitudInicio) *
+      Math.cos(latitudFin) *
+      Math.sin(diferenciaLongitud / 2) ** 2;
+
+  return radioTierra * 2 * Math.atan2(Math.sqrt(calculo), Math.sqrt(1 - calculo));
+}
+
+function calcularDistanciaRecorrido(ruta: LatLng[]) {
+  return ruta.slice(1).reduce(
+    (distancia, punto, indice) =>
+      distancia + calcularDistanciaEntrePuntos(ruta[indice], punto),
+    0,
+  );
+}
+
+const caloriasPorMinuto: Record<TipoActividad, number> = {
+  bicicleta: 8,
+  caminata: 4,
+  carrera: 10,
+};
+
 export function PantallaSeguimientoGPS({
+  alCancelar,
   alFinalizar,
   tipoActividad,
 }: PropiedadesPantallaSeguimientoGPS) {
   const bordesSeguros = useSafeAreaInsets();
   const referenciaMapa = useRef<MapView>(null);
   const referenciaMapaExpoGo = useRef<ReferenciaMapaRecorridoExpoGo>(null);
+  const duracionSimuladaSegundosRef = useRef<number | null>(null);
+  const origenSimulacionRef = useRef<LatLng | null>(null);
+  const simulacionActivaRef = useRef(false);
   const [estado, setEstado] = useState<EstadoSeguimiento>('solicitando');
   const [intento, setIntento] = useState(0);
   const [mensajeError, setMensajeError] = useState('');
   const [posicionActual, setPosicionActual] = useState<LatLng | null>(null);
   const [precision, setPrecision] = useState<number | null>(null);
   const [ruta, setRuta] = useState<LatLng[]>([]);
+  const [simulacionActiva, setSimulacionActiva] = useState(false);
+  const [ventanaSimulacionVisible, setVentanaSimulacionVisible] = useState(false);
+  const [inicioActividad] = useState(() => new Date());
   const usarMapaAlternativo =
     Platform.OS === 'android' &&
     Constants.executionEnvironment === ExecutionEnvironment.StoreClient;
@@ -93,6 +133,91 @@ export function PantallaSeguimientoGPS({
       { center: posicionActual, zoom: 16 },
       { duration: 300 },
     );
+  };
+
+  const simularRecorrido = ({
+    distanciaKm,
+    duracionMinutos,
+  }: {
+    distanciaKm: number;
+    duracionMinutos: number;
+  }) => {
+    if (!posicionActual) {
+      return;
+    }
+
+    const origen = origenSimulacionRef.current ?? ruta[0] ?? posicionActual;
+    origenSimulacionRef.current = origen;
+    const metrosPorGradoLatitud = 111_320;
+    const metrosPorGradoLongitud = Math.max(
+      20_000,
+      metrosPorGradoLatitud * Math.cos((origen.latitude * Math.PI) / 180),
+    );
+    const distanciaMetros = distanciaKm * 1000;
+    const cantidadTramos = Math.max(
+      8,
+      Math.min(60, Math.round(distanciaMetros / 150)),
+    );
+    const distanciaPorTramo = distanciaMetros / cantidadTramos;
+    let rumbo = Math.random() * Math.PI * 2;
+    let puntoAnterior = origen;
+    const puntosSimulados = Array.from({ length: cantidadTramos }, () => {
+      rumbo += (Math.random() - 0.5) * 1.15;
+      const norte = Math.cos(rumbo) * distanciaPorTramo;
+      const este = Math.sin(rumbo) * distanciaPorTramo;
+      const nuevoPunto = {
+        latitude: puntoAnterior.latitude + norte / metrosPorGradoLatitud,
+        longitude: puntoAnterior.longitude + este / metrosPorGradoLongitud,
+      };
+      puntoAnterior = nuevoPunto;
+      return nuevoPunto;
+    });
+    const rutaSimulada = [origen, ...puntosSimulados];
+
+    simulacionActivaRef.current = true;
+    duracionSimuladaSegundosRef.current = Math.round(duracionMinutos * 60);
+    setSimulacionActiva(true);
+    setVentanaSimulacionVisible(false);
+    setPrecision(null);
+    setRuta(rutaSimulada);
+    setPosicionActual(puntosSimulados[puntosSimulados.length - 1]);
+
+    if (usarMapaAlternativo) {
+      setTimeout(() => referenciaMapaExpoGo.current?.encuadrar(), 120);
+    } else {
+      referenciaMapa.current?.fitToCoordinates(rutaSimulada, {
+        animated: true,
+        edgePadding: { bottom: 180, left: 55, right: 55, top: 170 },
+      });
+    }
+  };
+
+  const finalizarSeguimiento = () => {
+    const finalActividad = new Date();
+    const duracionSegundos =
+      duracionSimuladaSegundosRef.current ??
+      Math.max(
+        1,
+        Math.round((finalActividad.getTime() - inicioActividad.getTime()) / 1000),
+      );
+    const inicioRegistrado = duracionSimuladaSegundosRef.current
+      ? new Date(finalActividad.getTime() - duracionSegundos * 1000)
+      : inicioActividad;
+    const distanciaMetros = calcularDistanciaRecorrido(ruta);
+    const calorias = Math.max(
+      1,
+      Math.round((duracionSegundos / 60) * caloriasPorMinuto[tipoActividad]),
+    );
+
+    alFinalizar({
+      calorias,
+      distanciaMetros,
+      duracionSegundos,
+      finalizadaEn: finalActividad.toISOString(),
+      iniciadaEn: inicioRegistrado.toISOString(),
+      ruta,
+      tipo: tipoActividad,
+    });
   };
 
   useEffect(() => {
@@ -146,7 +271,7 @@ export function PantallaSeguimientoGPS({
             timeInterval: 1000,
           },
           (ubicacion) => {
-            if (!pantallaActiva) {
+            if (!pantallaActiva || simulacionActivaRef.current) {
               return;
             }
 
@@ -238,7 +363,7 @@ export function PantallaSeguimientoGPS({
 
         <Pressable
           accessibilityRole="button"
-          onPress={alFinalizar}
+          onPress={alCancelar}
           style={estilos.botonVolver}
         >
           <Text style={estilos.textoBotonVolver}>Volver al inicio</Text>
@@ -297,15 +422,39 @@ export function PantallaSeguimientoGPS({
         <View style={estilos.tipoActividad}>
           <View style={estilos.puntoActivo} />
           <View>
-            <Text style={estilos.sobretituloMapa}>GPS ACTIVO</Text>
+            <Text style={estilos.sobretituloMapa}>
+              {simulacionActiva ? 'MODO PRUEBA' : 'GPS ACTIVO'}
+            </Text>
             <Text style={estilos.tituloMapa}>{nombresActividad[tipoActividad]}</Text>
           </View>
         </View>
         <View style={estilos.precision}>
           <Text style={estilos.textoPrecision}>
-            {precision === null ? 'GPS' : `±${Math.round(precision)} m`}
+            {simulacionActiva
+              ? 'SIMULADO'
+              : precision === null
+                ? 'GPS'
+                : `±${Math.round(precision)} m`}
           </Text>
         </View>
+      </View>
+
+      <View
+        pointerEvents="box-none"
+        style={[estilos.contenedorSimulacion, { top: bordesSeguros.top + 78 }]}
+      >
+        <Pressable
+          accessibilityRole="button"
+          onPress={() => setVentanaSimulacionVisible(true)}
+          style={[
+            estilos.botonSimulacion,
+            simulacionActiva && estilos.botonSimulacionActivo,
+          ]}
+        >
+          <Text style={estilos.textoBotonSimulacion}>
+            {simulacionActiva ? 'Cambiar simulación' : 'Simular recorrido'}
+          </Text>
+        </Pressable>
       </View>
 
       <View
@@ -323,13 +472,20 @@ export function PantallaSeguimientoGPS({
         <Pressable
           accessibilityLabel="Finalizar actividad"
           accessibilityRole="button"
-          onPress={alFinalizar}
+          onPress={finalizarSeguimiento}
           style={estilos.botonFinalizar}
         >
           <View style={estilos.cuadradoDetener} />
           <Text style={estilos.textoFinalizar}>Finalizar</Text>
         </Pressable>
       </View>
+
+      <VentanaSimulacion
+        alCerrar={() => setVentanaSimulacionVisible(false)}
+        alSimular={simularRecorrido}
+        tipoActividad={tipoActividad}
+        visible={ventanaSimulacionVisible}
+      />
     </View>
   );
 }
@@ -388,6 +544,30 @@ const estilos = StyleSheet.create({
     color: '#FFFFFF',
     fontSize: 11,
     fontWeight: '800',
+  },
+  contenedorSimulacion: {
+    alignItems: 'center',
+    left: 0,
+    position: 'absolute',
+    right: 0,
+  },
+  botonSimulacion: {
+    backgroundColor: '#FFFFFF',
+    borderColor: '#173F3B',
+    borderRadius: 17,
+    borderWidth: 1,
+    boxShadow: '0 6px 16px rgba(23, 63, 59, 0.16)',
+    paddingHorizontal: 15,
+    paddingVertical: 9,
+  },
+  botonSimulacionActivo: {
+    backgroundColor: '#E9F478',
+    borderColor: '#E9F478',
+  },
+  textoBotonSimulacion: {
+    color: '#173F3B',
+    fontSize: 10,
+    fontWeight: '900',
   },
   panelInferior: {
     alignItems: 'center',

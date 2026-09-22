@@ -1,5 +1,7 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import {
+  ActivityIndicator,
+  Alert,
   FlatList,
   Pressable,
   ScrollView,
@@ -14,11 +16,17 @@ import {
   ActividadHistorial,
   actividadesHistorial,
 } from '../data/historial';
+import {
+  eliminarActividadDeNube,
+  obtenerActividadesDeNube,
+} from '../servicios/actividadesNube';
+import { supabaseConfigurado } from '../servicios/supabase';
 import { TipoActividad } from './SelectorTipoActividad';
 import { TarjetaActividadDeslizable } from './TarjetaActividadDeslizable';
 
 type PropiedadesPantallaHistorial = {
   alVolver: () => void;
+  usuarioId?: string;
 };
 
 type FiltroTipo = 'todas' | TipoActividad;
@@ -50,10 +58,47 @@ function coincideConFecha(
   return true;
 }
 
-export function PantallaHistorial({ alVolver }: PropiedadesPantallaHistorial) {
-  const [actividades, setActividades] = useState(actividadesHistorial);
+export function PantallaHistorial({
+  alVolver,
+  usuarioId,
+}: PropiedadesPantallaHistorial) {
+  const usarNube = supabaseConfigurado && Boolean(usuarioId);
+  const [actividades, setActividades] = useState(() =>
+    usarNube ? [] : actividadesHistorial,
+  );
+  const [cargando, setCargando] = useState(usarNube);
+  const [mensajeError, setMensajeError] = useState('');
   const [filtroTipo, setFiltroTipo] = useState<FiltroTipo>('todas');
   const [filtroFecha, setFiltroFecha] = useState<FiltroFecha>('30_dias');
+
+  useEffect(() => {
+    if (!usarNube || !usuarioId) {
+      return;
+    }
+
+    let pantallaActiva = true;
+
+    void obtenerActividadesDeNube(usuarioId)
+      .then((actividadesRecuperadas) => {
+        if (pantallaActiva) {
+          setActividades(actividadesRecuperadas);
+        }
+      })
+      .catch(() => {
+        if (pantallaActiva) {
+          setMensajeError('No pudimos descargar tus actividades.');
+        }
+      })
+      .finally(() => {
+        if (pantallaActiva) {
+          setCargando(false);
+        }
+      });
+
+    return () => {
+      pantallaActiva = false;
+    };
+  }, [usarNube, usuarioId]);
 
   const actividadesFiltradas = useMemo(
     () =>
@@ -75,13 +120,29 @@ export function PantallaHistorial({ alVolver }: PropiedadesPantallaHistorial) {
   );
 
   const eliminarActividad = (id: string) => {
+    const listaAnterior = actividades;
     setActividades((listaActual) =>
       listaActual.filter((actividad) => actividad.id !== id),
     );
+
+    if (usarNube && usuarioId) {
+      void eliminarActividadDeNube(id, usuarioId).catch(() => {
+        setActividades(listaAnterior);
+        Alert.alert(
+          'No se pudo eliminar',
+          'La actividad volvió a aparecer porque no pudimos borrarla de la nube.',
+        );
+      });
+    }
   };
 
   const encabezadoLista = (
     <>
+      {!!mensajeError && (
+        <View style={estilos.avisoError}>
+          <Text style={estilos.textoAvisoError}>{mensajeError}</Text>
+        </View>
+      )}
       <View style={estilos.resumen}>
         <View style={estilos.datoResumen}>
           <Text style={estilos.valorResumen}>{actividadesFiltradas.length}</Text>
@@ -196,12 +257,19 @@ export function PantallaHistorial({ alVolver }: PropiedadesPantallaHistorial) {
 
       <FlatList
         ListEmptyComponent={
-          <View style={estilos.vacio}>
-            <Text style={estilos.tituloVacio}>No hay actividades</Text>
-            <Text style={estilos.textoVacio}>
-              Probá cambiando los filtros para ver otros recorridos.
-            </Text>
-          </View>
+          cargando ? (
+            <View style={estilos.vacio}>
+              <ActivityIndicator color="#173F3B" />
+              <Text style={estilos.textoVacio}>Sincronizando actividades...</Text>
+            </View>
+          ) : (
+            <View style={estilos.vacio}>
+              <Text style={estilos.tituloVacio}>No hay actividades</Text>
+              <Text style={estilos.textoVacio}>
+                Probá cambiando los filtros o registrá un nuevo recorrido.
+              </Text>
+            </View>
+          )
         }
         ListHeaderComponent={encabezadoLista}
         contentContainerStyle={estilos.contenidoLista}
@@ -266,6 +334,18 @@ const estilos = StyleSheet.create({
   contenidoLista: {
     paddingBottom: 30,
     paddingHorizontal: 20,
+  },
+  avisoError: {
+    backgroundColor: '#FFE4DE',
+    borderRadius: 16,
+    marginBottom: 12,
+    padding: 12,
+  },
+  textoAvisoError: {
+    color: '#9D4038',
+    fontSize: 11,
+    fontWeight: '700',
+    textAlign: 'center',
   },
   resumen: {
     alignItems: 'center',
